@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
-DEFAULT_TOKEN = "d753486a7f6e6a8d261e10ca81b72dc1732757cf"
+DEFAULT_TOKEN = "be94293c4825b97eef315d3be1aec7249a90e39d"
 BASE_URL = "https://api.moysklad.ru/api/remap/1.2"
 TIMEOUT = 30
 
@@ -48,6 +48,34 @@ def fetch_all_stores():
     response.raise_for_status()
     rows = response.json().get("rows", [])
     return [{"id": row["id"], "name": row["name"]} for row in rows]
+
+def fetch_products_barcodes(product_ids):
+    barcodes_map = {}
+
+    for pid in product_ids:
+        try:
+            url = f"{BASE_URL}/entity/product/{pid}"
+            response = SESSION.get(url, headers=HEADERS, timeout=TIMEOUT)
+            response.raise_for_status()
+
+            product = response.json()
+            barcodes = product.get("barcodes", [])
+
+            barcode_values = []
+            for bc in barcodes:
+                if bc.get("ean13"):
+                    barcode_values.append({"ean13": bc["ean13"]}) 
+                elif bc.get("code"):
+                    barcode_values.append({"code": bc["code"]})
+                elif bc.get("gtin"):
+                    barcode_values.append({"gtin": bc["gtin"]})
+
+            barcodes_map[pid] = barcode_values
+
+        except Exception:
+            barcodes_map[pid] = []
+
+    return barcodes_map
 
 def process_store(store_id):
     url_store = f"{BASE_URL}/entity/store/{store_id}"
@@ -100,7 +128,8 @@ def process_store(store_id):
                 "uom": entry.get("uom", {}).get("name") if entry.get("uom") else None,
                 "image": entry.get("image", {}).get("meta", {}).get("href") if entry.get("image") else None,
                 "category": entry.get("folder", {}).get("name") if entry.get("folder") else None,
-                "cells": []
+                "cells": [],
+                "barcodes": []
             }
 
     for entry in byslot_rows:
@@ -120,6 +149,12 @@ def process_store(store_id):
             for cell in products[product_id]["cells"]:
                 if cell["cell_name"] == cell_name:
                     cell["quantity"] += quantity
+
+    if products:
+        product_ids = list(products.keys())
+        barcodes_map = fetch_products_barcodes(product_ids)
+        for product_id, product in products.items():
+            product["barcodes"] = barcodes_map.get(product_id, [])
 
     return store_name, list(products.values())
 
