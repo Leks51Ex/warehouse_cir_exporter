@@ -33,7 +33,7 @@ pip install pyinstaller
 ## Шаг 3: Сборка приложения
 
 ```cmd
-pyinstaller WarehouseExporter.spec
+python -m PyInstaller .\WarehouseExporter.spec
 ```
 
 Или через команду:
