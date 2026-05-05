@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
-DEFAULT_TOKEN = "be94293c4825b97eef315d3be1aec7249a90e39d"
+DEFAULT_TOKEN = "ca54953573fd9d23722684259271da7e9391d1e9"
 BASE_URL = "https://api.moysklad.ru/api/remap/1.2"
 TIMEOUT = 30
 
@@ -43,39 +43,39 @@ def create_session():
 SESSION = create_session()
 
 def fetch_all_stores():
-    url = f"{BASE_URL}/entity/store?limit=1000"
-    response = SESSION.get(url, headers=HEADERS, timeout=TIMEOUT)
-    response.raise_for_status()
-    rows = response.json().get("rows", [])
-    return [{"id": row["id"], "name": row["name"]} for row in rows]
+    all_rows = []
+    limit = 1000
+    offset = 0
+    while True:
+        url = f"{BASE_URL}/entity/store?limit={limit}&offset={offset}"
+        response = SESSION.get(url, headers=HEADERS, timeout=TIMEOUT)
+        response.raise_for_status()
+        rows = response.json().get("rows", [])
+        all_rows.extend(rows)
+        if len(rows) < limit:
+            break
+        offset += limit
+    return [{"id": row["id"], "name": row["name"]} for row in all_rows]
 
-def fetch_products_barcodes(product_ids):
-    barcodes_map = {}
-
-    for pid in product_ids:
-        try:
-            url = f"{BASE_URL}/entity/product/{pid}"
-            response = SESSION.get(url, headers=HEADERS, timeout=TIMEOUT)
-            response.raise_for_status()
-
-            product = response.json()
-            barcodes = product.get("barcodes", [])
-
-            barcode_values = []
-            for bc in barcodes:
-                if bc.get("ean13"):
-                    barcode_values.append({"ean13": bc["ean13"]}) 
-                elif bc.get("code"):
-                    barcode_values.append({"code": bc["code"]})
-                elif bc.get("gtin"):
-                    barcode_values.append({"gtin": bc["gtin"]})
-
-            barcodes_map[pid] = barcode_values
-
-        except Exception:
-            barcodes_map[pid] = []
-
-    return barcodes_map
+def fetch_all_pages(base_url):
+    all_rows = []
+    limit = 1000
+    offset = 0
+    while True:
+        url = f"{base_url}&limit={limit}&offset={offset}" if "?" in base_url else f"{base_url}?limit={limit}&offset={offset}"
+        response = SESSION.get(url, headers=HEADERS, timeout=TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list):
+            all_rows.extend(data)
+            break
+        else:
+            rows = data.get("rows", [])
+            all_rows.extend(rows)
+            if len(rows) < limit:
+                break
+            offset += limit
+    return all_rows
 
 def process_store(store_id):
     url_store = f"{BASE_URL}/entity/store/{store_id}"
@@ -87,21 +87,12 @@ def process_store(store_id):
     store_json = store_response.json()
     store_name = store_json.get("name", "store")
 
-    slots_response = SESSION.get(url_slots, headers=HEADERS, timeout=TIMEOUT)
-    slots_json = slots_response.json()
-    slot_names = {slot["id"]: slot.get("name", "Без ячейки") for slot in slots_json.get("rows", [])}
+    slots_all = fetch_all_pages(url_slots)
+    slot_names = {slot["id"]: slot.get("name", "Без ячейки") for slot in slots_all}
 
-    stock_response = SESSION.get(url_stock_all, headers=HEADERS, timeout=TIMEOUT)
-    rows = stock_response.json().get("rows", [])
+    rows = fetch_all_pages(url_stock_all)
 
-    byslot_response = SESSION.get(url_by_slot, headers=HEADERS, timeout=TIMEOUT)
-    byslot_json = byslot_response.json()
-    if isinstance(byslot_json, dict):
-        byslot_rows = byslot_json.get("rows", [])
-    elif isinstance(byslot_json, list):
-        byslot_rows = byslot_json
-    else:
-        byslot_rows = []
+    byslot_rows = fetch_all_pages(url_by_slot)
 
     def extract_product_id(meta):
         href = meta.get("href", "")
@@ -128,8 +119,7 @@ def process_store(store_id):
                 "uom": entry.get("uom", {}).get("name") if entry.get("uom") else None,
                 "image": entry.get("image", {}).get("meta", {}).get("href") if entry.get("image") else None,
                 "category": entry.get("folder", {}).get("name") if entry.get("folder") else None,
-                "cells": [],
-                "barcodes": []
+                "cells": []
             }
 
     for entry in byslot_rows:
@@ -149,12 +139,6 @@ def process_store(store_id):
             for cell in products[product_id]["cells"]:
                 if cell["cell_name"] == cell_name:
                     cell["quantity"] += quantity
-
-    if products:
-        product_ids = list(products.keys())
-        barcodes_map = fetch_products_barcodes(product_ids)
-        for product_id, product in products.items():
-            product["barcodes"] = barcodes_map.get(product_id, [])
 
     return store_name, list(products.values())
 
