@@ -116,6 +116,8 @@ def process_store(store_id):
                 "code": entry.get("code"),
                 "price": price,
                 "quantity": quantity,
+                "reserved": entry.get("reserve"),
+                "stockDays":entry.get("stockDays"),
                 "uom": entry.get("uom", {}).get("name") if entry.get("uom") else None,
                 "image": entry.get("image", {}).get("meta", {}).get("href") if entry.get("image") else None,
                 "category": entry.get("folder", {}).get("name") if entry.get("folder") else None,
