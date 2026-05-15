@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
-DEFAULT_TOKEN = "ca54953573fd9d23722684259271da7e9391d1e9"
+DEFAULT_TOKEN = "cb16ea5d8c5c1965445b884048d00c1fad0a635c"
 BASE_URL = "https://api.moysklad.ru/api/remap/1.2"
 TIMEOUT = 30
 
